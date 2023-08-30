@@ -43,7 +43,7 @@ public class Inference extends Service {
         return files;
     }
 
-    public void TFLiteInference(String MODEL_PATH) throws IOException {
+    public void TFLiteInference(String MODEL_PATH) throws IOException, InterruptedException {
         CompatibilityList compatList = new CompatibilityList();
         Interpreter.Options gpu_options = new Interpreter.Options();
         if(compatList.isDelegateSupportedOnThisDevice()){
@@ -74,84 +74,91 @@ public class Inference extends Service {
         String TAG = "tfliteinference";
 
         Interpreter all_tflite_gpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, "CNN_original.tflite"), gpu_options);
-        Interpreter all_tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, "CNN_original.tflite") );
+//        Interpreter all_tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, "CNN_original.tflite") );
 
 
         // run on total cpu first time
-        long t5 = System.currentTimeMillis();
-        all_tflite_cpu.run(inputArray, outputArray);
-        long t6 = System.currentTimeMillis();
-        Log.d(TAG, "first all_cpu prediction takes " + (t6 - t5) + " ms");
-        Log.d(TAG, Arrays.toString(outputArray[0]));
+        int times = 1;
+        while(times++ < 10000){
+            Log.d(TAG, String.valueOf(times));
+            long t5 = System.currentTimeMillis();
+            all_tflite_gpu.run(inputArray, outputArray);
+            long t6 = System.currentTimeMillis();
+            Log.d(TAG, "first all_cpu prediction takes " + (t6 - t5) + " ms");
+            Thread.sleep(1000);
+        }
+
+//        Log.d(TAG, "first all_cpu prediction takes " + (t6 - t5) + " ms");
+//        Log.d(TAG, Arrays.toString(outputArray[0]));
 
         // run on total cpu second time
-        long t7 = System.currentTimeMillis();
-        all_tflite_cpu.run(inputArray, outputArray);
-        long t8 = System.currentTimeMillis();
-        Log.d(TAG, "second all_cpu prediction takes " + (t8 - t7) + " ms");
-        Log.d(TAG, Arrays.toString(outputArray[0]));
+//        long t7 = System.currentTimeMillis();
+//        all_tflite_cpu.run(inputArray, outputArray);
+//        long t8 = System.currentTimeMillis();
+//        Log.d(TAG, "second all_cpu prediction takes " + (t8 - t7) + " ms");
+//        Log.d(TAG, Arrays.toString(outputArray[0]));
+//
+//        // run on total gpu first time
+//        long t1 = System.currentTimeMillis();
+//        all_tflite_gpu.run(inputArray, outputArray);
+//        long t2 = System.currentTimeMillis();
+//        Log.d(TAG, "first all_gpu prediction takes " + (t2 - t1) + " ms");
+//        Log.d(TAG, Arrays.toString(outputArray[0]));
+//
+//        // run on total gpu second time
+//        long t9= System.currentTimeMillis();
+//        all_tflite_gpu.run(inputArray, outputArray);
+//        long t10 = System.currentTimeMillis();
+//        Log.d(TAG, "second all_gpu prediction takes " + (t10 - t9) + " ms");
+//        Log.d(TAG, Arrays.toString(outputArray[0]));
 
-        // run on total gpu first time
-        long t1 = System.currentTimeMillis();
-        all_tflite_gpu.run(inputArray, outputArray);
-        long t2 = System.currentTimeMillis();
-        Log.d(TAG, "first all_gpu prediction takes " + (t2 - t1) + " ms");
-        Log.d(TAG, Arrays.toString(outputArray[0]));
-
-        // run on total gpu second time
-        long t9= System.currentTimeMillis();
-        all_tflite_gpu.run(inputArray, outputArray);
-        long t10 = System.currentTimeMillis();
-        Log.d(TAG, "second all_gpu prediction takes " + (t10 - t9) + " ms");
-        Log.d(TAG, Arrays.toString(outputArray[0]));
-
-        all_tflite_cpu.close();
         all_tflite_gpu.close();
+//        all_tflite_gpu.close();
 
         // here start partition inference
-        int i = 0 ;
-        while(i < models.length){
-            String[] parts = models[i].split("_");
-            if(parts.length < 3){ // not the cutted model file
-                i++;
-                continue;
-            }
-
-            // Extract the cut number
-            int cutNumber = Integer.parseInt(parts[2]);
-
-            // Extract the last three numbers
-            int lastNumber1 = Integer.parseInt(parts[parts.length - 3]);
-            int lastNumber2 = Integer.parseInt(parts[parts.length - 2]);
-            int lastNumber3 = Integer.parseInt(parts[parts.length - 1].replace(".tflite", ""));
-            Log.d(TAG,"here is cut " + cutNumber);
-//            Log.d(TAG,"here is  " + cutNumber + " " + lastNumber1 + " " + lastNumber2 + " " + lastNumber3);
-
-            float[][][][] middleArray = new float[1][lastNumber1][lastNumber2][lastNumber3];
-
-            Interpreter tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i]));
-            Interpreter tflite_gpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i+1]), gpu_options);
-
-            // run on cpu and gpu first time
-            long t3 = System.currentTimeMillis();
-            tflite_cpu.run(inputArray, middleArray);
-            tflite_gpu.run(middleArray, outputArray);
-            long t4 = System.currentTimeMillis();
-            Log.d(TAG, "first partition prediction takes " + (t4 - t3) + " ms");
-//            Log.d(TAG, Arrays.toString(outputArray[0]));
-
-            // run on cpu and gpu second time
-            long t11 = System.currentTimeMillis();
-            tflite_cpu.run(inputArray, middleArray);
-            tflite_gpu.run(middleArray, outputArray);
-            long t12 = System.currentTimeMillis();
-            Log.d(TAG, "second partition prediction takes " + (t12 - t11) + " ms");
-//            Log.d(TAG, Arrays.toString(outputArray[0]));
-
-            tflite_cpu.close();
-            tflite_gpu.close();
-            i += 2;
-        }
+//        int i = 0 ;
+//        while(i < models.length){
+//            String[] parts = models[i].split("_");
+//            if(parts.length < 3){ // not the cutted model file
+//                i++;
+//                continue;
+//            }
+//
+//            // Extract the cut number
+//            int cutNumber = Integer.parseInt(parts[2]);
+//
+//            // Extract the last three numbers
+//            int lastNumber1 = Integer.parseInt(parts[parts.length - 3]);
+//            int lastNumber2 = Integer.parseInt(parts[parts.length - 2]);
+//            int lastNumber3 = Integer.parseInt(parts[parts.length - 1].replace(".tflite", ""));
+//            Log.d(TAG,"here is cut " + cutNumber);
+////            Log.d(TAG,"here is  " + cutNumber + " " + lastNumber1 + " " + lastNumber2 + " " + lastNumber3);
+//
+//            float[][][][] middleArray = new float[1][lastNumber1][lastNumber2][lastNumber3];
+//
+//            Interpreter tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i]));
+//            Interpreter tflite_gpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i+1]), gpu_options);
+//
+//            // run on cpu and gpu first time
+//            long t3 = System.currentTimeMillis();
+//            tflite_cpu.run(inputArray, middleArray);
+//            tflite_gpu.run(middleArray, outputArray);
+//            long t4 = System.currentTimeMillis();
+//            Log.d(TAG, "first partition prediction takes " + (t4 - t3) + " ms");
+////            Log.d(TAG, Arrays.toString(outputArray[0]));
+//
+//            // run on cpu and gpu second time
+//            long t11 = System.currentTimeMillis();
+//            tflite_cpu.run(inputArray, middleArray);
+//            tflite_gpu.run(middleArray, outputArray);
+//            long t12 = System.currentTimeMillis();
+//            Log.d(TAG, "second partition prediction takes " + (t12 - t11) + " ms");
+////            Log.d(TAG, Arrays.toString(outputArray[0]));
+//
+//            tflite_cpu.close();
+//            tflite_gpu.close();
+//            i += 2;
+//        }
     }
 
     @Override
@@ -170,7 +177,7 @@ public class Inference extends Service {
         showToast();
         try {
             TFLiteInference("model.tflite");
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             throw new RuntimeException(e);
         }
         return START_STICKY;
