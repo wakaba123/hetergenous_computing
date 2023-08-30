@@ -36,9 +36,9 @@ public class Inference extends Service {
         }
 
         // Define the dimensions of the input tensor
-        int inputWidth = 98;
-        int inputHeight = 98;
-        int inputChannels = 32;
+        int inputWidth = 1249;
+        int inputHeight = 126;
+        int inputChannels = 20;
 
         float[][][][] inputArray = new float[1][inputHeight][inputWidth][inputChannels];
 
@@ -50,16 +50,16 @@ public class Inference extends Service {
             }
         }
 
-        int outputSize = 5; // Assuming the output size is 5
+        int outputSize = 50; // Assuming the output size is 5
         float[][] outputArray = new float[1][outputSize];
 
 
-        float[][][][] middleArray = new float[1][48][48][32];
+        float[][][][] middleArray = new float[1][124][1247][20];
 
-        Interpreter all_tflite_gpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, MODEL_PATH), gpu_options);
+        Interpreter all_tflite_gpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, "CNN_original.tflite"), gpu_options);
         Interpreter tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,"model_part_1.tflite"));
         Interpreter tflite_gpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, "model_part_2.tflite"), gpu_options);
-        Interpreter all_tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, "model.tflite") );
+        Interpreter all_tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, "CNN_original.tflite") );
 
         // run on total cpu first time
         long t5 = System.currentTimeMillis();
