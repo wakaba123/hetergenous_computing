@@ -43,7 +43,7 @@ public class Inference extends Service {
         return files;
     }
 
-    public void TFLiteInference(String MODEL_PATH) throws IOException, InterruptedException {
+    public void TFLiteInference(int tid) throws IOException, InterruptedException {
         CompatibilityList compatList = new CompatibilityList();
         Interpreter.Options gpu_options = new Interpreter.Options();
         if(compatList.isDelegateSupportedOnThisDevice()){
@@ -71,94 +71,171 @@ public class Inference extends Service {
 
         int outputSize = 50; // Assuming the output size is 5
         float[][] outputArray = new float[1][outputSize];
+
         String TAG = "tfliteinference";
+        CommandExecution.easyExec("taskset -p 0f " + tid,true);
+        String output = CommandExecution.execCommand("taskset -p " + tid,true).successMsg;
+        Log.d(TAG, output);
 
-        Interpreter all_tflite_gpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, "CNN_original.tflite"), gpu_options);
-//        Interpreter all_tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this, "CNN_original.tflite") );
+//        Interpreter tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,"CNN_original.tflite"));
+//
+//        long t3 = System.currentTimeMillis();
+//        tflite_cpu.run(inputArray, outputArray);
+//        long t4 = System.currentTimeMillis();
+//        Log.d(TAG, tid + " takes " +  (t4-t3)  + "ms");
+//
+//        t3 = System.currentTimeMillis();
+//        tflite_cpu.run(inputArray, outputArray);
+//        t4 = System.currentTimeMillis();
+//        Log.d(TAG, tid + " takes " +  (t4-t3)  + "ms");
+//
+//        tflite_cpu.close();
 
+//         here start partition inference
+        int i = 0 ;
+        while(i < models.length){
+            String[] parts = models[i].split("_");
+            if(parts.length < 3){ // not the cutted model file
+                i++;
+                continue;
+            }
 
-        // run on total cpu first time
-        int times = 1;
-        while(times++ < 10000){
-            Log.d(TAG, String.valueOf(times));
+            // Extract the cut number
+            int cutNumber = Integer.parseInt(parts[2]);
+
+            // Extract the last three numbers
+            int lastNumber1 = Integer.parseInt(parts[parts.length - 3]);
+            int lastNumber2 = Integer.parseInt(parts[parts.length - 2]);
+            int lastNumber3 = Integer.parseInt(parts[parts.length - 1].replace(".tflite", ""));
+            Log.d(TAG,"here is cut " + cutNumber);
+//            Log.d(TAG,"here is  " + cutNumber + " " + lastNumber1 + " " + lastNumber2 + " " + lastNumber3);
+
+            float[][][][] middleArray = new float[1][lastNumber1][lastNumber2][lastNumber3];
+
+            Interpreter tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i]));
+            Interpreter tflite_cpu2 = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i+1]));
+
+            Interpreter tflite_gpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i]), gpu_options);
+            Interpreter tflite_gpu2 = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i+1]), gpu_options);
+
+            // on big core
+            CommandExecution.easyExec("taskset -p f0 " + tid,true);
+
+            // first time
+            long t3 = System.currentTimeMillis();
+            tflite_cpu.run(inputArray, middleArray);
+            long t4 = System.currentTimeMillis();
+            Log.d(TAG, "big core left part first time " + (t4 - t3) + " ms");
+
             long t5 = System.currentTimeMillis();
-            all_tflite_gpu.run(inputArray, outputArray);
+            tflite_cpu2.run(middleArray, outputArray);
             long t6 = System.currentTimeMillis();
-            Log.d(TAG, "first all_cpu prediction takes " + (t6 - t5) + " ms");
-            Thread.sleep(1000);
+            Log.d(TAG, "big core right part first time " + (t6 - t5) + " ms");
+
+            Log.d(TAG, "big core all first time " + (t6 -t5 + t4-t3) + " ms");
+
+            // second time
+            t3 = System.currentTimeMillis();
+            tflite_cpu.run(inputArray, middleArray);
+            t4 = System.currentTimeMillis();
+            Log.d(TAG, "big core left part second time " + (t4 - t3) + " ms");
+
+            t5 = System.currentTimeMillis();
+            tflite_cpu2.run(middleArray, outputArray);
+            t6 = System.currentTimeMillis();
+            Log.d(TAG, "big core right part second time " + (t6 - t5) + " ms");
+            Log.d(TAG, "big core all first time " + (t6 -t5 + t4-t3)  + " ms");
+
+            // on little core
+            CommandExecution.easyExec("taskset -p 0f " + tid,true);
+
+            // first time
+            t3 = System.currentTimeMillis();
+            tflite_cpu.run(inputArray, middleArray);
+            t4 = System.currentTimeMillis();
+            Log.d(TAG, "little core left part first time " + (t4 - t3) + " ms");
+
+            t5 = System.currentTimeMillis();
+            tflite_cpu2.run(middleArray, outputArray);
+            t6 = System.currentTimeMillis();
+            Log.d(TAG, "little core right part first time " + (t6 - t5) + " ms");
+
+            Log.d(TAG, "little core all first time " + (t6 -t5 + t4-t3)  + " ms");
+
+            // second time
+            t3 = System.currentTimeMillis();
+            tflite_cpu.run(inputArray, middleArray);
+            t4 = System.currentTimeMillis();
+            Log.d(TAG, "little core left part second time " + (t4 - t3) + " ms");
+
+            t5 = System.currentTimeMillis();
+            tflite_cpu2.run(middleArray, outputArray);
+            t6 = System.currentTimeMillis();
+            Log.d(TAG, "little core right part second time " + (t6 - t5) + " ms");
+            Log.d(TAG, "little core all second time " + (t6 -t5 + t4-t3) + " ms");
+
+            // on gpu with little core
+            // first time
+            t3 = System.currentTimeMillis();
+            tflite_gpu.run(inputArray, middleArray);
+            t4 = System.currentTimeMillis();
+            Log.d(TAG, "gpu(little) left part first time " + (t4 - t3) + " ms");
+
+            t5 = System.currentTimeMillis();
+            tflite_gpu2.run(middleArray, outputArray);
+            t6 = System.currentTimeMillis();
+            Log.d(TAG, "gpu(little) right part first time " + (t6 - t5) + " ms");
+
+            Log.d(TAG, "gpu(little) all first time " + (t6 -t5 + t4-t3) + " ms" );
+
+            // second time
+            t3 = System.currentTimeMillis();
+            tflite_gpu.run(inputArray, middleArray);
+            t4 = System.currentTimeMillis();
+            Log.d(TAG, "gpu(little)left part second time " + (t4 - t3) + " ms");
+
+            t5 = System.currentTimeMillis();
+            tflite_gpu2.run(middleArray, outputArray);
+            t6 = System.currentTimeMillis();
+            Log.d(TAG, "gpu(little)right part second time " + (t6 - t5) + " ms");
+            Log.d(TAG, "gpu(little)all second time " + (t6 -t5 + t4-t3) + " ms");
+
+
+            // on gpu with big core
+            CommandExecution.easyExec("taskset -p f0 " + tid,true);
+            t3 = System.currentTimeMillis();
+            tflite_gpu.run(inputArray, middleArray);
+            t4 = System.currentTimeMillis();
+            Log.d(TAG, "gpu(big)left part first time " + (t4 - t3) + " ms");
+
+            t5 = System.currentTimeMillis();
+            tflite_gpu2.run(middleArray, outputArray);
+            t6 = System.currentTimeMillis();
+            Log.d(TAG, "gpu(big)right part first time " + (t6 - t5) + " ms");
+
+            Log.d(TAG, "gpu(big)all first time " + (t6 -t5 + t4-t3) + " ms" );
+
+            // second time
+            t3 = System.currentTimeMillis();
+            tflite_gpu.run(inputArray, middleArray);
+            t4 = System.currentTimeMillis();
+            Log.d(TAG, "gpu(big)left part second time " + (t4 - t3) + " ms");
+
+            t5 = System.currentTimeMillis();
+            tflite_gpu2.run(middleArray, outputArray);
+            t6 = System.currentTimeMillis();
+            Log.d(TAG, "gpu(big)right part second time " + (t6 - t5) + " ms");
+            Log.d(TAG, "gpu(big)all second time " + (t6 -t5 + t4-t3)  + " ms");
+
+            Log.d(TAG, "one cut finished");
+
+            tflite_cpu.close();
+            tflite_cpu2.close();
+            tflite_gpu.close();
+            tflite_gpu2.close();
+
+            i += 2;
         }
-
-//        Log.d(TAG, "first all_cpu prediction takes " + (t6 - t5) + " ms");
-//        Log.d(TAG, Arrays.toString(outputArray[0]));
-
-        // run on total cpu second time
-//        long t7 = System.currentTimeMillis();
-//        all_tflite_cpu.run(inputArray, outputArray);
-//        long t8 = System.currentTimeMillis();
-//        Log.d(TAG, "second all_cpu prediction takes " + (t8 - t7) + " ms");
-//        Log.d(TAG, Arrays.toString(outputArray[0]));
-//
-//        // run on total gpu first time
-//        long t1 = System.currentTimeMillis();
-//        all_tflite_gpu.run(inputArray, outputArray);
-//        long t2 = System.currentTimeMillis();
-//        Log.d(TAG, "first all_gpu prediction takes " + (t2 - t1) + " ms");
-//        Log.d(TAG, Arrays.toString(outputArray[0]));
-//
-//        // run on total gpu second time
-//        long t9= System.currentTimeMillis();
-//        all_tflite_gpu.run(inputArray, outputArray);
-//        long t10 = System.currentTimeMillis();
-//        Log.d(TAG, "second all_gpu prediction takes " + (t10 - t9) + " ms");
-//        Log.d(TAG, Arrays.toString(outputArray[0]));
-
-        all_tflite_gpu.close();
-//        all_tflite_gpu.close();
-
-        // here start partition inference
-//        int i = 0 ;
-//        while(i < models.length){
-//            String[] parts = models[i].split("_");
-//            if(parts.length < 3){ // not the cutted model file
-//                i++;
-//                continue;
-//            }
-//
-//            // Extract the cut number
-//            int cutNumber = Integer.parseInt(parts[2]);
-//
-//            // Extract the last three numbers
-//            int lastNumber1 = Integer.parseInt(parts[parts.length - 3]);
-//            int lastNumber2 = Integer.parseInt(parts[parts.length - 2]);
-//            int lastNumber3 = Integer.parseInt(parts[parts.length - 1].replace(".tflite", ""));
-//            Log.d(TAG,"here is cut " + cutNumber);
-////            Log.d(TAG,"here is  " + cutNumber + " " + lastNumber1 + " " + lastNumber2 + " " + lastNumber3);
-//
-//            float[][][][] middleArray = new float[1][lastNumber1][lastNumber2][lastNumber3];
-//
-//            Interpreter tflite_cpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i]));
-//            Interpreter tflite_gpu = new Interpreter(FileUtil.loadMappedFile(Inference.this,models[i+1]), gpu_options);
-//
-//            // run on cpu and gpu first time
-//            long t3 = System.currentTimeMillis();
-//            tflite_cpu.run(inputArray, middleArray);
-//            tflite_gpu.run(middleArray, outputArray);
-//            long t4 = System.currentTimeMillis();
-//            Log.d(TAG, "first partition prediction takes " + (t4 - t3) + " ms");
-////            Log.d(TAG, Arrays.toString(outputArray[0]));
-//
-//            // run on cpu and gpu second time
-//            long t11 = System.currentTimeMillis();
-//            tflite_cpu.run(inputArray, middleArray);
-//            tflite_gpu.run(middleArray, outputArray);
-//            long t12 = System.currentTimeMillis();
-//            Log.d(TAG, "second partition prediction takes " + (t12 - t11) + " ms");
-////            Log.d(TAG, Arrays.toString(outputArray[0]));
-//
-//            tflite_cpu.close();
-//            tflite_gpu.close();
-//            i += 2;
-//        }
     }
 
     @Override
@@ -175,11 +252,40 @@ public class Inference extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         showToast();
-        try {
-            TFLiteInference("model.tflite");
-        } catch (IOException | InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        Thread tfliteThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String TAG = "thread one";
+                int threadTid = android.os.Process.myTid();
+//                CommandExecution.easyExec("taskset -p 0f " + threadTid,true);
+//                String output = CommandExecution.execCommand("taskset -p " + threadTid,true).successMsg;
+//                Log.d(TAG, output);
+                try {
+                    TFLiteInference(threadTid);
+                } catch (IOException | InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+        tfliteThread.start();
+
+//        Thread tfliteThread3 = new Thread(new Runnable() {
+//            @Override
+//            public void run() {
+//                String TAG = "thread two";
+//                int threadTid = android.os.Process.myTid();
+////                CommandExecution.easyExec("taskset -p f0 " + threadTid,true);
+////                String output = CommandExecution.execCommand("taskset -p " + threadTid,true).successMsg;
+////                Log.d(TAG, output);
+//                try {
+//                    TFLiteInference(threadTid);
+//                } catch (IOException | InterruptedException e) {
+//                    throw new RuntimeException(e);
+//                }
+//            }
+//        });
+//        tfliteThread3.start();
+
         return START_STICKY;
     }
 
